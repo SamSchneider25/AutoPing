@@ -1,3 +1,4 @@
+import ipaddress
 import locale
 import os
 import platform
@@ -15,6 +16,31 @@ from const import (
     STATUS_DOT,
     STATUS_TEXT,
 )
+
+
+def is_valid_host(token: str) -> bool:
+    """Проверяет, что токен похож на IP-адрес или DNS-имя."""
+    host, _ = extract_port(token)
+    if not host:
+        return False
+    # localhost валиден всегда
+    if host.lower() == "localhost":
+        return True
+    # IP-адрес (v4/v6)
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+    # DNS-like имя:必须 содержать хотя бы одну точку (поддомен.domena)
+    if "." not in host:
+        return False
+    if re.match(
+        r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+$",
+        host,
+    ):
+        return True
+    return False
 
 
 @dataclass
