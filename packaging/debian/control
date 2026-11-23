@@ -1,0 +1,9 @@
+Package: autoping
+Version: 2.7.0
+Section: net
+Priority: optional
+Architecture: all
+Depends: python3, iputils-ping
+Maintainer: SamSchneider25 <gvarvain@gmail.com>
+Description: AutoPing - multi-host ping terminal UI in systemctl style
+ AutoPing pings multiple hosts in one terminal screen styled like systemctl status.

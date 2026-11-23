@@ -1,0 +1,15 @@
+pkgname=autoping
+pkgver=2.7.0
+pkgrel=1
+pkgdesc="Mass host ping terminal UI in systemctl style"
+arch=('any')
+url="https://github.com/SamSchneider25/AutoPing"
+license=('MIT')
+depends=('python' 'iputils-ping')
+source=('autoping.py')
+sha256sums=('SKIP')
+
+package() {
+  install -Dm755 autoping.py "${pkgdir}/usr/bin/autoping"
+  install -Dm644 autoping.desktop "${pkgdir}/usr/share/applications/autoping.desktop"
+}

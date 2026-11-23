@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AutoPing (PingCtl)
+Comment=Mass host ping terminal UI in systemctl style
+Exec=autoping
+Icon=network-wireless
+Terminal=true
+Categories=System;Network;
