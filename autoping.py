@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple
 
 from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET, STATUS_FAILED
 from display import (
-    setup_encoding, clear_screen, clear_frame, compute_widths, print_table,
+    setup_encoding, clear_screen, compute_widths, print_table,
     print_summary, export_results, print_help_screen, print_exit_summary,
     print_port_table, print_port_summary,
 )
@@ -52,9 +52,17 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
     frame_lines = 0
     try:
         while controller.running:
-            clear_frame(frame_lines) if frame_lines > 0 else clear_screen()
+            if frame_lines > 0:
+                # In-place подмена фрейма: поднять курсор вверх и перезаписать
+                sys.stdout.write(f"\x1b[{frame_lines}A")
+                sys.stdout.flush()
+            else:
+                clear_screen()
+            lines = 0
             print(f"AutoPing — режим наблюдения (обновление каждые {interval} с)")
+            lines += 1
             print(f"{time.strftime('%H:%M:%S')}  Ctrl+C для возврата\n")
+            lines += 2
             results = run_once(
                 hosts, args.count, args.timeout, args.interval, args.size, args.deadline
             )
@@ -62,11 +70,13 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
                 history.setdefault(r.host, []).extend(r.packets or [r.status])
                 history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
-            print_table(results, widths, history=history)
-            print_summary(results)
-            frame_lines = 7 + len(results)
+            lines += print_table(results, widths, history=history)
+            lines += print_summary(results)
+            lines += 2  # футер: "Следующее обновление через ... с..."
+            frame_lines = lines
+            print(f"\nСледующее обновление через {interval} с...")
+            sys.stdout.flush()
             if controller.running:
-                print(f"\nСледующее обновление через {interval} с...")
                 time.sleep(interval)
     except KeyboardInterrupt:
         pass
@@ -86,9 +96,17 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
     frame_lines = 0
     try:
         while controller.running:
-            clear_frame(frame_lines) if frame_lines > 0 else clear_screen()
+            if frame_lines > 0:
+                # In-place подмена фрейма: поднять курсор вверх и перезаписать
+                sys.stdout.write(f"\x1b[{frame_lines}A")
+                sys.stdout.flush()
+            else:
+                clear_screen()
+            lines = 0
             print("AutoPing — continuous mode (Ctrl+C для остановки)")
+            lines += 1
             print(f"{time.strftime('%H:%M:%S')}  Интервал: {interval} с\n")
+            lines += 2
             results = run_once(
                 hosts, 1, args.timeout, args.interval, args.size, args.deadline
             )
@@ -96,11 +114,13 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
                 history.setdefault(r.host, []).extend(r.packets or [r.status])
                 history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
-            print_table(results, widths, history=history)
-            print_summary(results)
-            frame_lines = 7 + len(results)
+            lines += print_table(results, widths, history=history)
+            lines += print_summary(results)
+            lines += 2  # футер: "Следующий такт..."
+            frame_lines = lines
+            print(f"\nСледующий такт через {interval} с...")
+            sys.stdout.flush()
             if controller.running:
-                print(f"\nСледующий такт через {interval} с...")
                 time.sleep(interval)
     except KeyboardInterrupt:
         pass

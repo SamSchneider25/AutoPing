@@ -17,7 +17,25 @@ from const import (
 HOST_WIDTH = 30
 
 
+def enable_vt() -> None:
+    """Включает Virtual Terminal (ANSI) для Windows-консоли, если доступно."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        hStdOut = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_ulong(0)
+        if kernel32.GetConsoleMode(hStdOut, ctypes.byref(mode)):
+            mode.value |= 0x0004  # ENABLE_VIRTUAL_TERMINAL
+            kernel32.SetConsoleMode(hStdOut, mode)
+    except Exception:
+        pass
+
+
 def setup_encoding() -> None:
+    enable_vt()
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
@@ -27,17 +45,6 @@ def setup_encoding() -> None:
 
 def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
-
-
-def clear_frame(lines: int = 0) -> None:
-    """Перерисовка фрейма без полной очистки экрана (убирает мигание)."""
-    if lines > 0:
-        import sys as _s
-
-        _s.stdout.write(f"\x1b[{lines}A\x1b[J")
-        _s.stdout.flush()
-    else:
-        clear_screen()
 
 
 def compute_widths(results: List) -> dict:
@@ -72,7 +79,7 @@ def format_history(history: List[str], pad: bool = True) -> str:
     return "".join(tiles)
 
 
-def print_header(widths: dict, title: str = "AutoPing — результаты проверки") -> None:
+def print_header(widths: dict, title: str = "AutoPing — результаты проверки") -> int:
     print(f"{BOLD}{title}{RESET}\n")
     print(
         f"┌ {'ST':<2}  {'HOST':<{widths['host']}}  "
@@ -85,6 +92,8 @@ def print_header(widths: dict, title: str = "AutoPing — результаты �
         + 2 + widths["packets"] + 2 + widths["loss"] + 2 + widths["avg"] + 2 + widths["err"] + 6
     )
     print(f"└{'─' * line_len}")
+    # title+blank + шапка + разделитель
+    return 4
 
 
 def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> str:
@@ -113,13 +122,15 @@ def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) 
     )
 
 
-def print_table(results: List, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> None:
-    print_header(widths)
+def print_table(results: List, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> int:
+    header_lines = print_header(widths)
     for r in results:
         print(format_row(r, widths, history))
+    # 4 (print_header) + строки таблицы
+    return header_lines + len(results)
 
 
-def print_summary(results: List) -> None:
+def print_summary(results: List) -> int:
     active = sum(1 for r in results if r.status == STATUS_ACTIVE)
     degraded = sum(1 for r in results if r.status == STATUS_DEGRADED)
     failed = sum(1 for r in results if r.status == STATUS_FAILED)
@@ -132,6 +143,8 @@ def print_summary(results: List) -> None:
         f"{RED}{failed} не отвечает{RESET}"
         + (f", {DIM}{unknown} неизвестно{RESET}" if unknown else "")
     )
+    # пустая строка + итог
+    return 2
 
 
 def print_help_screen() -> None:
