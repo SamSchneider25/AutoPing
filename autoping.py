@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+AutoPing (PingCtl) — точка входа.
+
+Синтаксис: [команда] [хосты через ; , пробел] [флаги]
+  ping 1.1.1.1;8.8.8.8 -c 2 -t 1000   (слово ping можно опустить)
+  port 10.15.20.205:1501 --timeout 500
+  help / clear / exit / quit
+"""
 import argparse
-import signal
 import shlex
+import signal
 import sys
 import time
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET
 from display import (
     setup_encoding, clear_screen, compute_widths, print_table,
     print_summary, export_results, print_help_screen, print_exit_summary,
+    print_port_table, print_port_summary,
 )
-from ping_core import (
-    read_hosts_from_file, split_hosts, run_once, PingResult, is_valid_host,
-)
+from ping_core import read_hosts_from_file, split_hosts, run_once, is_valid_host
+from port_core import parse_port_token, run_ports
+
+FLAG_WITH_VALUE = {
+    "-f", "--file", "-c", "--count", "--timeout", "-i", "--interval",
+    "-s", "--size", "-w", "--deadline", "--watch", "--output", "--out",
+}
+FLAG_TOKENS = FLAG_WITH_VALUE | {"-t", "--continuous", "--no-color", "-V", "--version"}
 
 
 class WatchController:
@@ -30,6 +44,7 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
 
     signal.signal(signal.SIGINT, controller.stop)
     history: dict = {}
+    results = []
     try:
         while controller.running:
             clear_screen()
@@ -50,19 +65,20 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
     except KeyboardInterrupt:
         pass
     clear_screen()
-    print_exit_summary(results if results else [])
+    print_exit_summary(results)
     return 0
 
 
 def continuous_loop(hosts, args, controller: WatchController) -> int:
-    """Бесконечный пинг с интервалом 1 сек (как ping -t)."""
+    """Бесконечный пинг (как ping -t)."""
     signal.signal(signal.SIGINT, controller.stop)
     history: dict = {}
+    results = []
     interval = max(1.0, args.interval or 1.0)
     try:
         while controller.running:
             clear_screen()
-            print(f"AutoPing — continuous mode (Ctrl+C для остановки)")
+            print("AutoPing — continuous mode (Ctrl+C для остановки)")
             print(f"{time.strftime('%H:%M:%S')}  Интервал: {interval} с\n")
             results = run_once(
                 hosts, 1, args.timeout, args.interval, args.size, args.deadline
@@ -79,7 +95,7 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
     except KeyboardInterrupt:
         pass
     clear_screen()
-    print_exit_summary(results if results else [])
+    print_exit_summary(results)
     return 0
 
 
@@ -89,9 +105,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Массовый пинг хостов в стиле systemctl status.",
         epilog=(
             "Примеры:\n"
-            "  %(prog)s 1.1.1.1;8.8.8.8;ya.ru\n"
+            "  %(prog)s ping 1.1.1.1;8.8.8.8;ya.ru -c 2\n"
             "  %(prog)s -t 1.1.1.1 8.8.8.8           (continuous, без остановки)\n"
-            "  %(prog)s --watch 3 -c 2 -t 500 1.1.1.1 8.8.8.8 router\n"
+            "  %(prog)s port 10.15.20.205:1501 --timeout 500\n"
             "  %(prog)s --file hosts.txt --count 10 --size 64\n"
             "  %(prog)s --output json --out results.json 1.1.1.1 google.com\n"
         ),
@@ -106,7 +122,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--interval", type=float, default=None, help="Интервал между пакетами, сек (Linux/macOS)")
     parser.add_argument("-s", "--size", type=int, default=None, help="Размер пакета, байт")
     parser.add_argument("-w", "--deadline", type=int, default=None, help="Общее время ожидания, сек (Linux)")
-    parser.add_argument("--port", type=str, default=None, help="Порт для справки (ping/ICMP не использует порты)")
     parser.add_argument("--watch", type=float, default=None, help="Перерисовывать экран каждые N секунд")
     parser.add_argument("--output", type=str, choices=["json", "csv"], default=None, help="Экспорт в JSON или CSV")
     parser.add_argument("--out", type=str, default=None, help="Путь к файлу для экспорта")
@@ -115,7 +130,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def collect_hosts(args) -> List[str]:
-    """Собирает список хостов из аргументов и файла, поддерживая ; , пробел."""
     hosts: List[str] = []
     for h in args.hosts:
         hosts.extend(split_hosts(h))
@@ -138,43 +152,41 @@ def collect_hosts(args) -> List[str]:
     return unique
 
 
+def apply_no_color() -> None:
+    import const
+    const.RED = const.GREEN = const.YELLOW = const.CYAN = const.BOLD = const.DIM = const.RESET = ""
+    const.STATUS_DOT = {
+        const.STATUS_ACTIVE: "●",
+        const.STATUS_DEGRADED: "○",
+        const.STATUS_FAILED: "✗",
+        const.STATUS_UNKNOWN: "?",
+    }
+    const.TILE_ACTIVE = "█"
+    const.TILE_DEGRADED = "▓"
+    const.TILE_FAILED = "█"
+    const.TILE_EMPTY = "░"
+
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
-    """Основная логика CLI. Возвращает код выхода, не вызывает sys.exit."""
+    """Основная логика ping-режима. Возвращает код выхода."""
     setup_encoding()
+    argv = preprocess_timeout(list(argv or []))
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.no_color:
-        import const
-        const.RED = const.GREEN = const.YELLOW = const.CYAN = const.BOLD = const.DIM = const.RESET = ""
-        const.STATUS_DOT = {
-            const.STATUS_ACTIVE: "●",
-            const.STATUS_DEGRADED: "○",
-            const.STATUS_FAILED: "✗",
-            const.STATUS_UNKNOWN: "?",
-        }
-        const.TILE_ACTIVE = "█"
-        const.TILE_DEGRADED = "▓"
-        const.TILE_FAILED = "█"
-        const.TILE_EMPTY = "░"
+        apply_no_color()
 
     hosts = collect_hosts(args)
-
     if not hosts:
         print_help_screen()
         return 2
 
-    if args.port:
-        print(f"{DIM}Порт {args.port} отмечен для справки (ICMP не использует TCP/UDP порты).{RESET}\n")
-
     try:
         if args.continuous:
-            controller = WatchController()
-            return continuous_loop(hosts, args, controller)
-
+            return continuous_loop(hosts, args, WatchController())
         if args.watch:
-            controller = WatchController()
-            return watch_loop(hosts, args, max(0.5, args.watch), controller)
+            return watch_loop(hosts, args, max(0.5, args.watch), WatchController())
 
         results = run_once(hosts, args.count, args.timeout, args.interval, args.size, args.deadline)
         widths = compute_widths(results)
@@ -188,23 +200,106 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         failed = sum(1 for r in results if r.status in ("failed", "unknown"))
         degraded = sum(1 for r in results if r.status == "degraded")
         return 1 if (failed or degraded) else 0
-
     except KeyboardInterrupt:
         clear_screen()
         print("\nПрервано пользователем (Ctrl+C).\n")
-        try:
-            print_exit_summary(results if 'results' in dir() else [])
-        except Exception:
-            pass
         return 130
 
 
+def preprocess_timeout(argv: List[str]) -> List[str]:
+    """-t N -> --timeout N (привычный синтаксис таймаута). -t без числа = continuous."""
+    out: List[str] = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "-t" and i + 1 < len(argv) and argv[i + 1].isdigit():
+            out.append("--timeout")
+            out.append(argv[i + 1])
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return out
+
+
+def split_hosts_flags(argv: List[str]) -> Tuple[List[str], List[str]]:
+    host_args: List[str] = []
+    flag_args: List[str] = []
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        if tok in FLAG_TOKENS:
+            flag_args.append(tok)
+            if tok in FLAG_WITH_VALUE and i + 1 < len(argv):
+                flag_args.append(argv[i + 1])
+                i += 2
+            else:
+                i += 1
+        else:
+            host_args.append(tok)
+            i += 1
+    return host_args, flag_args
+
+
+def do_ping(rest: List[str]) -> int:
+    host_args, flag_args = split_hosts_flags(rest)
+    if not host_args and not any(a in ("-f", "--file") for a in flag_args):
+        print(f"{RED}Ошибка:{RESET} укажите хосты, например: ping 1.1.1.1;ya.ru -c 2")
+        return 2
+    invalid = [h for h in host_args if not is_valid_host(h)]
+    if invalid:
+        print(f"{RED}Ошибка:{RESET} некорректные хосты: {', '.join(invalid)}")
+        print("Ожидается IP-адрес или DNS-имя (например: 1.1.1.1, ya.ru)")
+        return 2
+    try:
+        return run_cli(host_args + flag_args)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 0
+        if code != 0:
+            print(f"Ошибка аргументов (код {code})")
+        return code
+
+
+def do_port(rest: List[str]) -> int:
+    timeout = 1000
+    tokens: List[str] = []
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("--timeout", "-t"):
+            if i + 1 < len(rest) and rest[i + 1].isdigit():
+                timeout = int(rest[i + 1])
+                i += 2
+                continue
+            print(f"{RED}Ошибка:{RESET} --timeout требует число (мс)")
+            return 2
+        if a.startswith("-"):
+            print(f"{RED}Ошибка:{RESET} неизвестный флаг для port: {a}")
+            return 2
+        tokens.extend(split_hosts(a))
+        i += 1
+
+    if not tokens:
+        print(f"{RED}Ошибка:{RESET} укажите host:port, например: port 10.15.20.205:1501")
+        return 2
+    invalid = [t for t in tokens if parse_port_token(t)[0] is None]
+    if invalid:
+        print(f"{RED}Ошибка:{RESET} некорректные адреса: {', '.join(invalid)}")
+        print("Ожидается host:port с портом 1-65535 (например: 10.15.20.205:1501)")
+        return 2
+
+    results = run_ports(tokens, timeout)
+    print_port_table(results)
+    print_port_summary(results)
+    return 0 if all(r.status == "active" for r in results) else 1
+
+
 def interactive_mode() -> int:
-    """Интерактивный REPL: ждет ввод хостов и флагов, выполняет, снова ждет."""
     setup_encoding()
     print(f"{BOLD}AutoPing (PingCtl) v{__version__} — интерактивный режим{RESET}")
-    print("Введите хосты и флаги, например: 1.1.1.1;8.8.8.8;ya.ru -c 2 -t 1000")
-    print("Команды: help, clear, exit, quit\n")
+    print("Синтаксис: [команда] [хосты через ;] [флаги]")
+    print("  ping 1.1.1.1;8.8.8.8;ya.ru -c 2 -t 1000")
+    print("  port 10.15.20.205:1501 --timeout 500")
+    print("Команды: help, clear, exit, quit (слово ping можно опустить)\n")
 
     while True:
         try:
@@ -225,71 +320,25 @@ def interactive_mode() -> int:
             print_help_screen()
             continue
 
-        # Заменяем ; и , на пробелы, чтобы "1.1.1.1;8.8.8.8 -c 2" работал
         line_for_split = line.replace(";", " ").replace(",", " ")
-        # Разбиваем ввод на токены (поддерживаем кавычки для строк с ;)
         try:
-            argv = shlex.split(line_for_split)
+            argv = preprocess_timeout(shlex.split(line_for_split))
         except ValueError as exc:
             print(f"Ошибка разбора ввода: {exc}")
             continue
-
-        # Предобработка: если в интерактивном режиме за -t идет число, считаем это таймаутом
-        # (пользователь привык к -t 1000, а -t без значения — continuous)
-        i = 0
-        while i < len(argv):
-            if argv[i] == "-t" and i + 1 < len(argv) and argv[i + 1].isdigit():
-                argv[i] = "--timeout"
-                i += 2
-                continue
-            i += 1
-
-        # Выделяем хосты (все, что не флаги)
-        flag_tokens = {"-f", "--file", "-c", "--count", "-t", "--continuous", "--timeout",
-                       "-i", "--interval", "-s", "--size", "-w", "--deadline",
-                       "--port", "--watch", "--output", "--out", "--no-color",
-                       "-V", "--version"}
-        host_args: List[str] = []
-        flag_args: List[str] = []
-        i = 0
-        while i < len(argv):
-            tok = argv[i]
-            if tok in flag_tokens:
-                flag_args.append(tok)
-                # Флаги с обязательным значением
-                if tok in ("-f", "--file", "-c", "--count", "--timeout", "-i", "--interval",
-                           "-s", "--size", "-w", "--deadline", "--port", "--watch",
-                           "--output", "--out"):
-                    if i + 1 < len(argv):
-                        flag_args.append(argv[i + 1])
-                        i += 2
-                    else:
-                        i += 1
-                else:
-                    i += 1
-            else:
-                host_args.append(tok)
-                i += 1
-
-        # Валидация хостов
-        invalid = [h for h in host_args if not is_valid_host(h)]
-        if invalid:
-            print(f"{RED}Ошибка:{RESET} некорректные хосты: {', '.join(invalid)}")
-            print("Ожидается IP-адрес или DNS-имя (например: 1.1.1.1, ya.ru)")
+        if not argv:
             continue
 
-        full_argv = host_args + flag_args
-        try:
-            code = run_cli(full_argv)
-        except SystemExit as exc:
-            code = exc.code if isinstance(exc.code, int) else 0
-            if code != 0:
-                print(f"Ошибка аргументов (код {code})")
-            continue
-
-        if code not in (0, 1):
-            print(f"(завершено с кодом {code})")
-        # После каждого прогона снова ждем ввод
+        first = argv[0].lower()
+        if first == "ping":
+            do_ping(argv[1:])
+        elif first == "port":
+            do_port(argv[1:])
+        elif is_valid_host(argv[0]):
+            do_ping(argv)  # неявный ping
+        else:
+            print(f"{RED}Ошибка:{RESET} неизвестная команда: {argv[0]}")
+            print("Доступно: ping, port, help, clear, exit, quit")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -298,6 +347,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         argv = sys.argv[1:]
     if not argv:
         return interactive_mode()
+
+    first = argv[0].lower()
+    if first == "help":
+        print_help_screen()
+        return 0
+    if first == "ping":
+        argv = argv[1:]
+    elif first == "port":
+        return do_port(argv[1:])
+    if not argv:
+        print_help_screen()
+        return 2
     return run_cli(argv)
 
 

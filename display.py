@@ -10,7 +10,7 @@ from const import (
     STATUS_ACTIVE, STATUS_COLOR, STATUS_DEGRADED, STATUS_DOT,
     STATUS_FAILED, STATUS_TEXT, STATUS_UNKNOWN,
     TILE_ACTIVE, TILE_DEGRADED, TILE_EMPTY, TILE_FAILED, HISTORY_WIDTH,
-    HELP_TEXT, EXAMPLE_OUTPUT,
+    HELP_TEXT, EXAMPLE_OUTPUT, PORT_TEXT,
 )
 
 # Фиксированные ширины столбцов, чтобы таблица не «ездила»
@@ -143,6 +143,40 @@ def print_exit_summary(results: List) -> None:
     if unknown:
         print(f"  {DIM}Неизвестно:{RESET} {unknown}")
     print()
+
+
+def print_port_table(results: List, title: str = "AutoPing — проверка портов (TCP)") -> None:
+    w_hp = min(34, max(24, max((len(r.label()) for r in results), default=24)))
+    w_err = max(28, max((len(r.error_msg) for r in results if r.error_msg), default=28))
+    print(f"{BOLD}{title}{RESET}\n")
+    print(
+        f"┌ {'СТАТУС':<2}  {'ХОСТ:ПОРТ':<{w_hp}}  {'СТАТУС':<14}  "
+        f"{'ВРЕМЯ мс':<9}  ОШИБКА"
+    )
+    line_len = 2 + 2 + w_hp + 2 + 14 + 2 + 9 + 2 + w_err + 6
+    print(f"└{'─' * line_len}")
+    for r in results:
+        hp = r.label()
+        if len(hp) > w_hp:
+            hp = hp[: w_hp - 1] + "…"
+        t = f"{r.time_ms:.1f}" if r.time_ms is not None else "—"
+        color = GREEN if r.status == STATUS_ACTIVE else RED
+        text = PORT_TEXT.get(r.status, PORT_TEXT[STATUS_FAILED])
+        dot = STATUS_DOT.get(r.status, STATUS_DOT[STATUS_FAILED])
+        print(
+            f"{dot}  {hp:<{w_hp}}  {color}{text:<14}{RESET}  "
+            f"{t:<9}  {r.error_msg[:w_err]}"
+        )
+
+
+def print_port_summary(results: List) -> None:
+    opened = sum(1 for r in results if r.status == STATUS_ACTIVE)
+    closed = len(results) - opened
+    print()
+    print(
+        f"Итого: {len(results)} портов, "
+        f"{GREEN}{opened} открыто{RESET}, {RED}{closed} не доступно{RESET}"
+    )
 
 
 def export_results(results: List, fmt: str, path: Optional[str] = None) -> None:

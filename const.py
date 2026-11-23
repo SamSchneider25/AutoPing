@@ -34,6 +34,11 @@ STATUS_DOT = {
     STATUS_UNKNOWN: f"{DIM}?{RESET}",
 }
 
+PORT_TEXT = {
+    STATUS_ACTIVE: "открыт",
+    STATUS_FAILED: "не доступен",
+}
+
 TILE_ACTIVE = f"{GREEN}█{RESET}"
 TILE_DEGRADED = f"{YELLOW}▓{RESET}"
 TILE_FAILED = f"{RED}█{RESET}"
@@ -43,26 +48,35 @@ HISTORY_WIDTH = 24
 
 HELP_TEXT = f"""{BOLD}AutoPing (PingCtl) v{__version__} — шпора{RESET}
 
-{BOLD}Флаги:{RESET}
-  ХОСТ [ХОСТ ...]   Хосты/IP через пробел, ; или , (например: 1.1.1.1;8.8.8.8;ya.ru)
+{BOLD}Синтаксис:{RESET} [команда] [хосты через ; , пробел] [флаги]
+
+{BOLD}Команды:{RESET}
+  ping ХОСТЫ [флаги]   ICMP-пинг (слово ping можно опустить)
+  port host:port ...   Проверка TCP-порта (своя таблица, не мешается с ping)
+  help                 Эта шпора
+  clear                Очистить экран
+  exit / quit          Выйти
+
+{BOLD}Флаги ping:{RESET}
   -f, --file FILE   Файл со списком хостов (по одной строке, # — комментарий)
   -c, --count N     Число пакетов на хост (по умолчанию 4)
   -t                Пинговать без остановки (continuous, как ping -t)
-  --timeout N       Таймаут ответа на пакет, мс (по умолчанию 1000)
+  -t N / --timeout N  Таймаут ответа на пакет, мс (по умолчанию 1000)
   -i, --interval N  Интервал между пакетами, сек (Linux/macOS)
   -s, --size N      Размер пакета, байт
   -w, --deadline N  Общее время ожидания, сек (Linux)
-  --port N          Порт для справки (ping/ICMP не использует порты)
   --watch N         Обновлять экран каждые N сек (режим systemctl/watch)
   --output json|csv Экспортировать результат в JSON/CSV
   --out ФАЙЛ        Куда сохранить экспорт (без этого — в stdout)
   --no-color        Выключить цвета
   -V, --version     Версия программы
 
-{BOLD}Интерактивные команды:{RESET}
-  help    Показать эту шпору
-  clear   Очистить экран
-  exit/quit Выйти из программы
+{BOLD}Флаги port:{RESET}
+  --timeout N / -t N  Таймаут TCP-соединения, мс (по умолчанию 1000)
+
+{BOLD}Валидация:{RESET}
+  ping: IP (v4/v6) или DNS-имя с точкой, localhost. Иначе — ошибка, не пингуется.
+  port: host:port, порт 1-65535. Иначе — ошибка.
 
 {BOLD}Пример вывода:{RESET}
   ●  1.1.1.1          ████▓▓░░░░░░░░░░░░░░░░░░░░░   активен          2/2     0.0%     12.0
