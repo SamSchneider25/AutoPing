@@ -15,13 +15,13 @@ import sys
 import time
 from typing import List, Optional, Tuple
 
-from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET
+from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET, STATUS_FAILED
 from display import (
     setup_encoding, clear_screen, compute_widths, print_table,
     print_summary, export_results, print_help_screen, print_exit_summary,
     print_port_table, print_port_summary,
 )
-from ping_core import read_hosts_from_file, split_hosts, run_once, is_valid_host
+from ping_core import read_hosts_from_file, split_hosts, run_once, is_valid_host, PingResult
 from port_core import parse_port_token, run_ports
 
 FLAG_WITH_VALUE = {
@@ -182,13 +182,34 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         print_help_screen()
         return 2
 
-    try:
-        if args.continuous:
-            return continuous_loop(hosts, args, WatchController())
-        if args.watch:
-            return watch_loop(hosts, args, max(0.5, args.watch), WatchController())
+    valid = [h for h in hosts if is_valid_host(h)]
+    invalid = [h for h in hosts if not is_valid_host(h)]
 
-        results = run_once(hosts, args.count, args.timeout, args.interval, args.size, args.deadline)
+    try:
+        if args.continuous or args.watch:
+            if invalid:
+                print(f"{YELLOW}Пропущены некорректные адреса:{RESET} {', '.join(invalid)}")
+            if not valid:
+                print(f"{RED}Ошибка:{RESET} нет валидных хостов для пинга")
+                return 2
+            if args.continuous:
+                return continuous_loop(valid, args, WatchController())
+            return watch_loop(valid, args, max(0.5, args.watch), WatchController())
+
+        results = (
+            run_once(valid, args.count, args.timeout, args.interval, args.size, args.deadline)
+            if valid else []
+        )
+        if invalid:
+            # Невалидные токены — отдельными строками, вывод не пропускается
+            by_host = {r.host: r for r in results}
+            results = [
+                by_host[h] if h in by_host else PingResult(
+                    host=h, status=STATUS_FAILED,
+                    error_msg="Некорректный адрес (ожидается IP или DNS-имя)",
+                )
+                for h in hosts
+            ]
         widths = compute_widths(results)
 
         if args.output:
@@ -245,11 +266,6 @@ def do_ping(rest: List[str]) -> int:
     if not host_args and not any(a in ("-f", "--file") for a in flag_args):
         print(f"{RED}Ошибка:{RESET} укажите хосты, например: ping 1.1.1.1;ya.ru -c 2")
         return 2
-    invalid = [h for h in host_args if not is_valid_host(h)]
-    if invalid:
-        print(f"{RED}Ошибка:{RESET} некорректные хосты: {', '.join(invalid)}")
-        print("Ожидается IP-адрес или DNS-имя (например: 1.1.1.1, ya.ru)")
-        return 2
     try:
         return run_cli(host_args + flag_args)
     except SystemExit as exc:
@@ -281,12 +297,6 @@ def do_port(rest: List[str]) -> int:
     if not tokens:
         print(f"{RED}Ошибка:{RESET} укажите host:port, например: port 10.15.20.205:1501")
         return 2
-    invalid = [t for t in tokens if parse_port_token(t)[0] is None]
-    if invalid:
-        print(f"{RED}Ошибка:{RESET} некорректные адреса: {', '.join(invalid)}")
-        print("Ожидается host:port с портом 1-65535 (например: 10.15.20.205:1501)")
-        return 2
-
     results = run_ports(tokens, timeout)
     print_port_table(results)
     print_port_summary(results)

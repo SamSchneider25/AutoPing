@@ -44,7 +44,7 @@ def compute_widths(results: List) -> dict:
     }
 
 
-def format_history(history: List[str]) -> str:
+def format_history(history: List[str], pad: bool = True) -> str:
     tiles = []
     for status in history[-HISTORY_WIDTH:]:
         if status == STATUS_ACTIVE:
@@ -55,8 +55,9 @@ def format_history(history: List[str]) -> str:
             tiles.append(TILE_FAILED)
         else:
             tiles.append(TILE_EMPTY)
-    while len(tiles) < HISTORY_WIDTH:
-        tiles.append(TILE_EMPTY)
+    if pad:
+        while len(tiles) < HISTORY_WIDTH:
+            tiles.append(TILE_EMPTY)
     return "".join(tiles)
 
 
@@ -88,6 +89,9 @@ def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) 
     hist = ""
     if history and r.host in history:
         hist = format_history(history[r.host])
+    elif getattr(r, "packets", None):
+        # Одиночный прогон: тайл на каждый пакет (-c N -> N тайлов)
+        hist = format_history(r.packets, pad=False)
 
     return (
         f"{r.dot()}  {host:<{widths['host']}}  "

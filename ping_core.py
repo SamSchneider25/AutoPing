@@ -5,7 +5,7 @@ import platform
 import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from const import (
@@ -56,6 +56,7 @@ class PingResult:
     error_code: int = 0
     error_msg: str = ""
     raw: str = ""
+    packets: List[str] = field(default_factory=list)
 
     def dot(self) -> str:
         return STATUS_DOT.get(self.status, STATUS_DOT[STATUS_UNKNOWN])
@@ -236,6 +237,16 @@ def parse_windows(text: str, host: str = "") -> PingResult:
         if times:
             r.min_ms, r.max_ms = min(times), max(times)
             r.avg_ms = sum(times) / len(times)
+
+    # Per-packet: строки ответа/таймаута идут по порядку пакетов
+    for m in re.finditer(
+        r"(ответ от|reply from|превышен интервал ожидания|request timed out|"
+        r"timed out|недоступен|unreachable)",
+        t,
+        re.I,
+    ):
+        kind = m.group(1).lower()
+        r.packets.append(STATUS_ACTIVE if kind in ("ответ от", "reply from") else STATUS_FAILED)
     return r
 
 
@@ -265,6 +276,14 @@ def parse_posix(text: str, host: str = "") -> PingResult:
         if times:
             r.min_ms, r.max_ms = min(times), max(times)
             r.avg_ms = sum(times) / len(times)
+
+    # Per-packet: по номерам icmp_seq; отсутствующий seq = потерянный пакет
+    active_seqs = {int(m.group(1)) for m in re.finditer(r"icmp_seq=(\d+)[^\n]*time=", text)}
+    if r.sent:
+        r.packets = [
+            STATUS_ACTIVE if s in active_seqs else STATUS_FAILED
+            for s in range(1, r.sent + 1)
+        ]
     return r
 
 
