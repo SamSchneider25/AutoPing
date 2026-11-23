@@ -17,7 +17,7 @@ from typing import List, Optional, Tuple
 
 from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET, STATUS_FAILED
 from display import (
-    setup_encoding, clear_screen, compute_widths, print_table,
+    setup_encoding, clear_screen, clear_frame, compute_widths, print_table,
     print_summary, export_results, print_help_screen, print_exit_summary,
     print_port_table, print_port_summary,
 )
