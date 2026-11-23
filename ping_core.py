@@ -111,12 +111,13 @@ def decode_output(data: bytes) -> str:
     return candidates[0]
 
 
-def build_ping_command(host, count, timeout_ms, interval, size, deadline):
+def build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=False):
     sysname = platform.system().lower()
     count = max(1, count)
     timeout_ms = max(1, timeout_ms)
 
     if sysname == "windows":
+        # Windows ping.exe не умеет интервал <1с; flood = быстрая серия с live-выводом
         cmd = ["ping", "-n", str(count), "-w", str(timeout_ms)]
         if size:
             cmd += ["-l", str(size)]
@@ -125,7 +126,9 @@ def build_ping_command(host, count, timeout_ms, interval, size, deadline):
 
     if sysname == "darwin":
         cmd = ["ping", "-c", str(count), "-t", str(max(1, round(timeout_ms / 1000)))]
-        if interval:
+        if flood and not interval:
+            cmd += ["-i", "0.01"]
+        elif interval:
             cmd += ["-i", str(interval)]
         if size:
             cmd += ["-s", str(size)]
@@ -137,12 +140,70 @@ def build_ping_command(host, count, timeout_ms, interval, size, deadline):
         cmd += ["-w", str(deadline)]
     if timeout_ms:
         cmd += ["-W", str(max(1, round(timeout_ms / 1000)))]
-    if interval:
+    if flood and not interval:
+        # настоящий flood требует root; иначе минимальный интервал
+        try:
+            is_root = os.geteuid() == 0
+        except AttributeError:
+            is_root = False
+        cmd += ["-f"] if is_root else ["-i", "0.01"]
+    elif interval:
         cmd += ["-i", str(interval)]
     if size:
         cmd += ["-s", str(size)]
     cmd += [host]
     return cmd
+
+
+def stream_ping(host, count, timeout_ms, interval, size, deadline,
+                flood=False, on_packet=None) -> PingResult:
+    """Пинг с построчным чтением: on_packet(status) вызывается на каждый пакет (live)."""
+    cmd = build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=flood)
+    result = PingResult(host=host)
+    enc = "cp866" if os.name == "nt" else "utf-8"
+    packets: List[str] = []
+    chunks: List[bytes] = []
+    proc = None
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        for raw in proc.stdout:
+            chunks.append(raw)
+            line = raw.decode(enc, errors="replace")
+            status = None
+            if re.search(r"(ответ от|reply from|bytes from)", line, re.I) and \
+               re.search(r"(время|time=)", line, re.I):
+                status = STATUS_ACTIVE
+            elif re.search(
+                r"(превышен интервал ожидания|request timed out|timed out|"
+                r"недоступен|unreachable|no answer yet)", line, re.I
+            ):
+                status = STATUS_FAILED
+            if status:
+                packets.append(status)
+                if on_packet:
+                    on_packet(status)
+        proc.wait()
+    except FileNotFoundError:
+        result.error_code = 2
+        result.error_msg = "Команда ping не найдена в системе"
+        result.status = STATUS_FAILED
+        return result
+    except KeyboardInterrupt:
+        if proc:
+            proc.kill()
+        raise
+
+    whole = decode_output(b"".join(chunks))
+    result.raw = whole
+    parsed = parse_windows(whole, host) if os.name == "nt" else parse_posix(whole, host)
+    result.sent = parsed.sent
+    result.received = parsed.received
+    result.loss_pct = parsed.loss_pct
+    result.min_ms = parsed.min_ms
+    result.avg_ms = parsed.avg_ms
+    result.max_ms = parsed.max_ms
+    result.packets = packets or parsed.packets
+    return _classify(result, whole)
 
 
 def _classify(result: PingResult, text: str) -> PingResult:

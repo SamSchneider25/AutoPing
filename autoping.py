@@ -21,14 +21,18 @@ from display import (
     print_summary, export_results, print_help_screen, print_exit_summary,
     print_port_table, print_port_summary,
 )
-from ping_core import read_hosts_from_file, split_hosts, run_once, is_valid_host, PingResult
+from ping_core import (
+    read_hosts_from_file, split_hosts, run_once, is_valid_host, PingResult, stream_ping,
+)
 from port_core import parse_port_token, run_ports
 
 FLAG_WITH_VALUE = {
-    "-f", "--file", "-c", "--count", "--timeout", "-i", "--interval",
+    "--file", "-c", "--count", "--timeout", "-W", "-i", "--interval",
     "-s", "--size", "-w", "--deadline", "--watch", "--output", "--out",
 }
-FLAG_TOKENS = FLAG_WITH_VALUE | {"-t", "--continuous", "--no-color", "-V", "--version"}
+FLAG_TOKENS = FLAG_WITH_VALUE | {
+    "-t", "--continuous", "-f", "--flood", "--no-color", "-V", "--version",
+}
 
 
 class WatchController:
@@ -54,7 +58,7 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
                 hosts, args.count, args.timeout, args.interval, args.size, args.deadline
             )
             for r in results:
-                history.setdefault(r.host, []).append(r.status)
+                history.setdefault(r.host, []).extend(r.packets or [r.status])
                 history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
             print_table(results, widths, history=history)
@@ -71,6 +75,8 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
 
 def continuous_loop(hosts, args, controller: WatchController) -> int:
     """Бесконечный пинг (как ping -t)."""
+    from const import HISTORY_WIDTH
+
     signal.signal(signal.SIGINT, controller.stop)
     history: dict = {}
     results = []
@@ -84,8 +90,8 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
                 hosts, 1, args.timeout, args.interval, args.size, args.deadline
             )
             for r in results:
-                history.setdefault(r.host, []).append(r.status)
-                history[r.host] = history[r.host][-24:]
+                history.setdefault(r.host, []).extend(r.packets or [r.status])
+                history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
             print_table(results, widths, history=history)
             print_summary(results)
@@ -115,10 +121,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("hosts", nargs="*", help="Хосты/IP (можно через ; , пробел)")
-    parser.add_argument("-f", "--file", type=str, default=None, help="Путь к файлу со списком хостов")
     parser.add_argument("-c", "--count", type=int, default=4, help="Число эхо-запросов на хост")
     parser.add_argument("-t", "--continuous", action="store_true", help="Пинговать без остановки (как ping -t)")
-    parser.add_argument("--timeout", type=int, default=1000, help="Таймаут ответа на пакет, мс (по умолчанию 1000)")
+    parser.add_argument("-f", "--flood", action="store_true", help="Flood ping: быстрая серия, live-вывод потерь")
+    parser.add_argument("-W", "--timeout", type=int, default=1000, help="Таймаут ответа на пакет, мс (по умолчанию 1000)")
+    parser.add_argument("--file", type=str, default=None, help="Путь к файлу со списком хостов")
     parser.add_argument("-i", "--interval", type=float, default=None, help="Интервал между пакетами, сек (Linux/macOS)")
     parser.add_argument("-s", "--size", type=int, default=None, help="Размер пакета, байт")
     parser.add_argument("-w", "--deadline", type=int, default=None, help="Общее время ожидания, сек (Linux)")
@@ -167,6 +174,38 @@ def apply_no_color() -> None:
     const.TILE_EMPTY = "░"
 
 
+def _tile(status: str) -> None:
+    import const
+    mapping = {
+        const.STATUS_ACTIVE: const.TILE_ACTIVE,
+        const.STATUS_DEGRADED: const.TILE_DEGRADED,
+        const.STATUS_FAILED: const.TILE_FAILED,
+    }
+    print(mapping.get(status, const.TILE_EMPTY), end="", flush=True)
+
+
+def live_run(hosts: List[str], args, flood: bool = False) -> List[PingResult]:
+    """Последовательный пинг с live-тайлами по мере прихода пакетов (промежуточное состояние)."""
+    import const
+    count = args.count
+    if flood and args.count == 4:
+        count = 100  # flood по умолчанию — 100 пакетов
+    results: List[PingResult] = []
+    for h in hosts:
+        print(f"{const.BOLD}{h}{const.RESET}  ", end="", flush=True)
+        try:
+            r = stream_ping(
+                h, count, args.timeout, args.interval, args.size, args.deadline,
+                flood=flood, on_packet=_tile,
+            )
+        except KeyboardInterrupt:
+            print()
+            raise
+        print()
+        results.append(r)
+    return results
+
+
 def run_cli(argv: Optional[List[str]] = None) -> int:
     """Основная логика ping-режима. Возвращает код выхода."""
     setup_encoding()
@@ -196,10 +235,13 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
                 return continuous_loop(valid, args, WatchController())
             return watch_loop(valid, args, max(0.5, args.watch), WatchController())
 
-        results = (
-            run_once(valid, args.count, args.timeout, args.interval, args.size, args.deadline)
-            if valid else []
-        )
+        if valid:
+            if args.output:
+                results = run_once(valid, args.count, args.timeout, args.interval, args.size, args.deadline)
+            else:
+                results = live_run(valid, args, flood=args.flood)
+        else:
+            results = []
         if invalid:
             # Невалидные токены — отдельными строками, вывод не пропускается
             by_host = {r.host: r for r in results}

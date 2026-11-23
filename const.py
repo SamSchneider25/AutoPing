@@ -1,4 +1,4 @@
-__version__ = "2.0.0"
+__version__ = "2.5.0"
 
 STATUS_ACTIVE = "active"
 STATUS_DEGRADED = "degraded"
@@ -46,53 +46,31 @@ TILE_EMPTY = f"{DIM}░{RESET}"
 
 HISTORY_WIDTH = 24
 
-HELP_TEXT = f"""{BOLD}AutoPing (PingCtl) v{__version__} — шпора{RESET}
+HELP_TEXT = f"""{BOLD}AutoPing v{__version__}{RESET}  [ping|port] [хосты;...] [флаги]
 
-{BOLD}Синтаксис:{RESET} [команда] [хосты через ; , пробел] [флаги]
+{BOLD}ping:{RESET} (слово ping можно опустить)
+  -c N   пакетов на хост (4)
+  -t     без остановки (continuous)
+  -f     flood: быстрая серия, live-потери
+  -W N   таймаут пакета, мс (1000)
+  -i N   интервал, сек
+  -s N   размер пакета, байт
+  -w N   дедлайн, сек
+  --watch N     обновление экрана, сек
+  --file F      хосты из файла
+  --output json|csv  --out F
+  --no-color  -V
 
-{BOLD}Команды:{RESET}
-  ping ХОСТЫ [флаги]   ICMP-пинг (слово ping можно опустить)
-  port host:port ...   Проверка TCP-порта (своя таблица, не мешается с ping)
-  help                 Эта шпора
-  clear                Очистить экран
-  exit / quit          Выйти
+{BOLD}port:{RESET} host:port ...  [-W N]
 
-{BOLD}Флаги ping:{RESET}
-  -f, --file FILE   Файл со списком хостов (по одной строке, # — комментарий)
-  -c, --count N     Число пакетов на хост (по умолчанию 4)
-  -t                Пинговать без остановки (continuous, как ping -t)
-  -t N / --timeout N  Таймаут ответа на пакет, мс (по умолчанию 1000)
-  -i, --interval N  Интервал между пакетами, сек (Linux/macOS)
-  -s, --size N      Размер пакета, байт
-  -w, --deadline N  Общее время ожидания, сек (Linux)
-  --watch N         Обновлять экран каждые N сек (режим systemctl/watch)
-  --output json|csv Экспортировать результат в JSON/CSV
-  --out ФАЙЛ        Куда сохранить экспорт (без этого — в stdout)
-  --no-color        Выключить цвета
-  -V, --version     Версия программы
+{BOLD}команды:{RESET} help  clear  exit  quit
 
-{BOLD}Флаги port:{RESET}
-  --timeout N / -t N  Таймаут TCP-соединения, мс (по умолчанию 1000)
+{BOLD}вывод:{RESET} тайл на пакет: {GREEN}█{RESET} ok  {RED}█{RESET} loss  {YELLOW}▓{RESET} degrade  {DIM}░{RESET} пусто
+  одиночный: -c N тайлов, live по мере прихода
+  watch/-t/-f: история по пакетам
 
-{BOLD}Валидация:{RESET}
-  ping: IP (v4/v6) или DNS-имя с точкой, localhost. Иначе — ошибка, не пингуется.
-  port: host:port, порт 1-65535. Иначе — ошибка.
-
-{BOLD}Пример вывода:{RESET}
-  ●  1.1.1.1          ████▓▓░░░░░░░░░░░░░░░░░░░░░   активен          2/2     0.0%     12.0
-  ○  8.8.8.8          ████████▓░░░░░░░░░░░░░░░░░░   деградировано    1/2    50.0%     52.0   Потеря пакетов 50.0%
-  ✗  bad.host         ░░░░░░░░░░░░░░░░░░░░░░░░░░   не отвечает      —/—     — %       —       Узел не найден
-
-{BOLD}ИСТОРИЯ (тайлы):{RESET}
-  █ зелёный — отвечает   █ красный — не отвечает   ▓ жёлтый — деградировано   ░ серый — нет данных
-
-{BOLD}Коды выхода:{RESET}
-  0   все хосты отвечают
-  1   есть деградированные / не отвечающие
-  2   ошибка аргументов или чтения файла
-  130 прервано пользователем (Ctrl+C)
-
-{BOLD}Примечание:{RESET} ping (ICMP) не работает с портами. --port только для справки.
+{BOLD}валидация:{RESET} IP / DNS с точкой / localhost; мусор = строка ✗, не пингуется
+{BOLD}коды:{RESET} 0 ok  1 есть проблемы  2 аргументы  130 Ctrl+C
 """
 
 EXAMPLE_OUTPUT = """AutoPing — результаты проверки

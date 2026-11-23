@@ -124,10 +124,8 @@ def print_summary(results: List) -> None:
 
 
 def print_help_screen() -> None:
-    """Выводит гостевой экран со шпорой и примером."""
+    """Краткая шпора."""
     print(HELP_TEXT)
-    print()
-    print(EXAMPLE_OUTPUT)
 
 
 def print_exit_summary(results: List) -> None:
