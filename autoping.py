@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 import argparse
 import signal
+import shlex
 import sys
 import time
-from typing import Optional, List, Tuple
+from typing import List, Optional
 
 from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET
 from display import (
@@ -12,7 +13,7 @@ from display import (
     print_summary, export_results, print_help_screen, print_exit_summary,
 )
 from ping_core import (
-    read_hosts_from_file, split_hosts, extract_port, run_once, PingResult,
+    read_hosts_from_file, split_hosts, run_once, PingResult,
 )
 
 
@@ -33,7 +34,7 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
         while controller.running:
             clear_screen()
             print(f"AutoPing — режим наблюдения (обновление каждые {interval} с)")
-            print(f"{time.strftime('%H:%M:%S')}  Ctrl+C для завершения\n")
+            print(f"{time.strftime('%H:%M:%S')}  Ctrl+C для возврата\n")
             results = run_once(
                 hosts, args.count, args.timeout, args.interval, args.size, args.deadline
             )
@@ -50,7 +51,6 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
         pass
     clear_screen()
     print_exit_summary(results if results else [])
-    print_help_screen()
     return 0
 
 
@@ -107,7 +107,8 @@ def collect_hosts(args) -> List[str]:
     return unique
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def run_cli(argv: Optional[List[str]] = None) -> int:
+    """Основная логика CLI. Возвращает код выхода, не вызывает sys.exit."""
     setup_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -132,7 +133,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         print_help_screen()
         return 2
 
-    # --port только для справки, ICMP не использует порты
     if args.port:
         print(f"{DIM}Порт {args.port} отмечен для справки (ICMP не использует TCP/UDP порты).{RESET}\n")
 
@@ -157,19 +157,84 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         clear_screen()
         print("\nПрервано пользователем (Ctrl+C).\n")
-        # results может не существовать, если прервали до run_once
         try:
             print_exit_summary(results if 'results' in dir() else [])
         except Exception:
             pass
-        print_help_screen()
         return 130
+
+
+def interactive_mode() -> int:
+    """Интерактивный REPL: ждет ввод хостов и флагов, выполняет, снова ждет."""
+    setup_encoding()
+    print(f"{BOLD}AutoPing (PingCtl) v{__version__} — интерактивный режим{RESET}")
+    print("Введите хосты и флаги, например: 1.1.1.1;8.8.8.8;ya.ru -c 2 -t 1000")
+    print("Команды: help, exit, quit\n")
+
+    while True:
+        try:
+            line = input("autoping> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nВыход.")
+            return 0
+
+        if not line:
+            continue
+        if line.lower() in ("exit", "quit"):
+            return 0
+        if line.lower() in ("help", "-h", "--help"):
+            print_help_screen()
+            continue
+
+        try:
+            argv = shlex.split(line)
+        except ValueError as exc:
+            print(f"Ошибка разбора ввода: {exc}")
+            continue
+
+        # --watch в интерактивном режиме: автообновление, при Ctrl+C возвращаемся сюда
+        if any(a == "--watch" or a.startswith("--watch=") for a in argv):
+            try:
+                code = run_cli(argv)
+                if code == 130:
+                    # watch_loop уже вернул управление после Ctrl+C
+                    continue
+            except SystemExit as exc:
+                # argparse ошибки — просто покажем и продолжим
+                code = exc.code if isinstance(exc.code, int) else 0
+                if code != 0:
+                    print(f"Ошибка аргументов (код {code})")
+                continue
+            continue
+
+        try:
+            code = run_cli(argv)
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 0
+            if code != 0:
+                print(f"Ошибка аргументов (код {code})")
+            continue
+
+        if code not in (0, 1):
+            print(f"(завершено с кодом {code})")
+        # После каждого прогона снова ждем ввод — не выходим
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    setup_encoding()
+    # Если нет аргументов — интерактивный режим
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv:
+        return interactive_mode()
+    return run_cli(argv)
 
 
 if __name__ == "__main__":
     try:
         code = main()
     finally:
-        if sys.stdout.isatty():
+        # input только при неинтерактивном запуске, чтобы окно не закрывалось сразу
+        if sys.stdout.isatty() and sys.argv[1:]:
             input("\nНажмите Enter для выхода...")
     sys.exit(code)

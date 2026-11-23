@@ -13,6 +13,9 @@ from const import (
     HELP_TEXT, EXAMPLE_OUTPUT,
 )
 
+# Фиксированные ширины столбцов, чтобы таблица не «ездила»
+HOST_WIDTH = 30
+
 
 def setup_encoding() -> None:
     for stream in (sys.stdout, sys.stderr):
@@ -27,7 +30,8 @@ def clear_screen() -> None:
 
 
 def compute_widths(results: List) -> dict:
-    w_host = max(18, max((len(r.host) for r in results), default=18))
+    # Хост фиксированной ширины, остальные — по содержимому с минимумами
+    w_host = HOST_WIDTH
     w_err = max(24, max((len(r.error_msg) for r in results if r.error_msg), default=24))
     return {
         "host": w_host,
@@ -72,7 +76,10 @@ def print_header(widths: dict, title: str = "AutoPing — результаты �
 
 
 def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> str:
-    host = r.host[: widths["host"]]
+    # Обрезаем длинный хост с многоточием, чтобы не ломать таблицу
+    host = r.host
+    if len(host) > widths["host"]:
+        host = host[: widths["host"] - 1] + "…"
     packets = f"{r.received}/{r.sent}" if r.sent else "—/—"
     loss = f"{r.loss_pct:.1f}%" if r.sent else "— %"
     avg = f"{r.avg_ms:.1f}" if r.avg_ms is not None else "—"
