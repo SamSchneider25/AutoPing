@@ -19,7 +19,8 @@ from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET, STATU
 from display import (
     setup_encoding, clear_screen, compute_widths, print_table,
     print_summary, export_results, print_help_screen, print_exit_summary,
-    print_port_table, print_port_summary,
+    print_port_table, print_port_summary, render_frame, hide_cursor, show_cursor,
+    reset_frame, table_lines, summary_line,
 )
 from ping_core import (
     read_hosts_from_file, split_hosts, run_once, is_valid_host, PingResult, stream_ping,
@@ -49,20 +50,10 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
     signal.signal(signal.SIGINT, controller.stop)
     history: dict = {}
     results = []
-    frame_lines = 0
     try:
+        clear_screen()
+        hide_cursor()
         while controller.running:
-            if frame_lines > 0:
-                # In-place подмена фрейма: поднять курсор вверх и перезаписать
-                sys.stdout.write(f"\x1b[{frame_lines}A")
-                sys.stdout.flush()
-            else:
-                clear_screen()
-            lines = 0
-            print(f"AutoPing — режим наблюдения (обновление каждые {interval} с)")
-            lines += 1
-            print(f"{time.strftime('%H:%M:%S')}  Ctrl+C для возврата\n")
-            lines += 2
             results = run_once(
                 hosts, args.count, args.timeout, args.interval, args.size, args.deadline
             )
@@ -70,18 +61,29 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
                 history.setdefault(r.host, []).extend(r.packets or [r.status])
                 history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
-            lines += print_table(results, widths, history=history)
-            lines += print_summary(results)
-            lines += 2  # футер: "Следующее обновление через ... с..."
-            frame_lines = lines
-            print(f"\nСледующее обновление через {interval} с...")
-            sys.stdout.flush()
+            lines = [
+                f"AutoPing — режим наблюдения (обновление каждые {interval} с)",
+                "",
+                f"{time.strftime('%H:%M:%S')}  Ctrl+C для возврата",
+                "",
+            ]
+            lines += table_lines(results, widths, history=history)
+            lines += [
+                "",
+                summary_line(results),
+                "",
+                f"Следующее обновление через {interval} с...",
+            ]
+            render_frame("\n".join(lines))
             if controller.running:
                 time.sleep(interval)
     except KeyboardInterrupt:
         pass
-    clear_screen()
-    print_exit_summary(results)
+    finally:
+        show_cursor()
+        reset_frame()
+        clear_screen()
+        print_exit_summary(results)
     return 0
 
 
@@ -93,20 +95,10 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
     history: dict = {}
     results = []
     interval = max(1.0, args.interval or 1.0)
-    frame_lines = 0
     try:
+        clear_screen()
+        hide_cursor()
         while controller.running:
-            if frame_lines > 0:
-                # In-place подмена фрейма: поднять курсор вверх и перезаписать
-                sys.stdout.write(f"\x1b[{frame_lines}A")
-                sys.stdout.flush()
-            else:
-                clear_screen()
-            lines = 0
-            print("AutoPing — continuous mode (Ctrl+C для остановки)")
-            lines += 1
-            print(f"{time.strftime('%H:%M:%S')}  Интервал: {interval} с\n")
-            lines += 2
             results = run_once(
                 hosts, 1, args.timeout, args.interval, args.size, args.deadline
             )
@@ -114,18 +106,29 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
                 history.setdefault(r.host, []).extend(r.packets or [r.status])
                 history[r.host] = history[r.host][-HISTORY_WIDTH:]
             widths = compute_widths(results)
-            lines += print_table(results, widths, history=history)
-            lines += print_summary(results)
-            lines += 2  # футер: "Следующий такт..."
-            frame_lines = lines
-            print(f"\nСледующий такт через {interval} с...")
-            sys.stdout.flush()
+            lines = [
+                "AutoPing — continuous mode (Ctrl+C для остановки)",
+                "",
+                f"{time.strftime('%H:%M:%S')}  Интервал: {interval} с",
+                "",
+            ]
+            lines += table_lines(results, widths, history=history)
+            lines += [
+                "",
+                summary_line(results),
+                "",
+                f"Следующий такт через {interval} с...",
+            ]
+            render_frame("\n".join(lines))
             if controller.running:
                 time.sleep(interval)
     except KeyboardInterrupt:
         pass
-    clear_screen()
-    print_exit_summary(results)
+    finally:
+        show_cursor()
+        reset_frame()
+        clear_screen()
+        print_exit_summary(results)
     return 0
 
 
