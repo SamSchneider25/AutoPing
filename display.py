@@ -64,10 +64,10 @@ def format_history(history: List[str], pad: bool = True) -> str:
 def print_header(widths: dict, title: str = "AutoPing — результаты проверки") -> None:
     print(f"{BOLD}{title}{RESET}\n")
     print(
-        f"┌ {'СТАТУС':<2}  {'ХОСТ':<{widths['host']}}  "
-        f"{'ИСТОРИЯ':<{widths['history']}}  {'СТАТУС':<{widths['status']}}  "
-        f"{'ПАКЕТЫ':<{widths['packets']}}  {'ПОТЕРЯ':<{widths['loss']}}  "
-        f"{'СРЕДНЕ мс':<{widths['avg']}}  ОШИБКА"
+        f"┌ {'ST':<2}  {'HOST':<{widths['host']}}  "
+        f"{'HIST':<{widths['history']}}  {'STATUS':<{widths['status']}}  "
+        f"{'PKTS':<{widths['packets']}}  {'LOSS':<{widths['loss']}}  "
+        f"{'AVG':<{widths['avg']}}  {'ERROR':<{widths['err']}}"
     )
     line_len = (
         2 + 2 + widths["host"] + 2 + widths["history"] + 2 + widths["status"]
@@ -98,7 +98,7 @@ def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) 
         f"{hist:<{widths['history']}}  "
         f"{STATUS_COLOR.get(r.status, DIM)}{r.status_plain():<{widths['status']}}{RESET}  "
         f"{packets:<{widths['packets']}}  {loss:<{widths['loss']}}  "
-        f"{avg:<{widths['avg']}}  {err}"
+        f"{avg:<{widths['avg']}}  {err:<{widths['err']}}"
     )
 
 
