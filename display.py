@@ -29,6 +29,17 @@ def clear_screen() -> None:
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def clear_frame(lines: int = 0) -> None:
+    """Перерисовка фрейма без полной очистки экрана (убирает мигание)."""
+    if lines > 0:
+        import sys as _s
+
+        _s.stdout.write(f"\x1b[{lines}A\x1b[J")
+        _s.stdout.flush()
+    else:
+        clear_screen()
+
+
 def compute_widths(results: List) -> dict:
     # Хост фиксированной ширины, остальные — по содержимому с минимумами
     w_host = HOST_WIDTH

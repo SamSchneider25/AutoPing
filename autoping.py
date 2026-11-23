@@ -49,9 +49,10 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
     signal.signal(signal.SIGINT, controller.stop)
     history: dict = {}
     results = []
+    frame_lines = 0
     try:
         while controller.running:
-            clear_screen()
+            clear_frame(frame_lines) if frame_lines > 0 else clear_screen()
             print(f"AutoPing — режим наблюдения (обновление каждые {interval} с)")
             print(f"{time.strftime('%H:%M:%S')}  Ctrl+C для возврата\n")
             results = run_once(
@@ -63,6 +64,7 @@ def watch_loop(hosts, args, interval: float, controller: WatchController) -> int
             widths = compute_widths(results)
             print_table(results, widths, history=history)
             print_summary(results)
+            frame_lines = 7 + len(results)
             if controller.running:
                 print(f"\nСледующее обновление через {interval} с...")
                 time.sleep(interval)
@@ -81,9 +83,10 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
     history: dict = {}
     results = []
     interval = max(1.0, args.interval or 1.0)
+    frame_lines = 0
     try:
         while controller.running:
-            clear_screen()
+            clear_frame(frame_lines) if frame_lines > 0 else clear_screen()
             print("AutoPing — continuous mode (Ctrl+C для остановки)")
             print(f"{time.strftime('%H:%M:%S')}  Интервал: {interval} с\n")
             results = run_once(
@@ -95,6 +98,7 @@ def continuous_loop(hosts, args, controller: WatchController) -> int:
             widths = compute_widths(results)
             print_table(results, widths, history=history)
             print_summary(results)
+            frame_lines = 7 + len(results)
             if controller.running:
                 print(f"\nСледующий такт через {interval} с...")
                 time.sleep(interval)
