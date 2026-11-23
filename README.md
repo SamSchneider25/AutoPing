@@ -147,4 +147,4 @@ MIT
 
 ## Автор
 
-Griph <gvarvain@gmail.com>
+SamSchnider25 (Griph)
