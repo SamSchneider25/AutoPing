@@ -1,7 +1,6 @@
 name: AutoPing CI/CD
 
 on: [push, pull_request] # Для тестов и линтера
-# Чтобы publish срабатывал только на теги, оставить on: [push] здесь, 
 
   publish:
     needs: test-and-lint
