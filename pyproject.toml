@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "autoping"
-version = "1.0.1"
+version = "1.1.2"
 description = "mass ping and TCP port checker"
 requires-python = ">=3.8"
 
