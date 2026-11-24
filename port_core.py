@@ -20,7 +20,7 @@ class PortResult:
 
 
 def parse_port_token(token: str) -> Tuple[Optional[str], Optional[int]]:
-    """host:port -> (host, port). Невалидный токен -> (None, None)."""
+    """host:port -> (хост, порт); невалидный токен -> (None, None)."""
     if ":" not in token:
         return None, None
     host, _, port_s = token.rpartition(":")

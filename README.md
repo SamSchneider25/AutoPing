@@ -1,62 +1,39 @@
 # AutoPing (PingCtl)
 
-Массовый пинг хостов и проверка TCP-портов в одном терминале в стиле `systemctl status`.
+Массовый пинг и проверка TCP-портов в одном окне: статус, тайлы потерь, статистика.
 
-Вместо десятков окон `ping 1.1.1.1 -t` — один экран: статус, тайлы потерь, статистика.
-
-## Структура
-
-```
-AutoPing/
-├── autoping.py   # точка входа: команды, флаги, REPL
-├── const.py      # константы, шпора, тайлы
-├── ping_core.py  # ICMP-пинг, валидация, live/stream
-├── port_core.py  # TCP-проверка портов
-└── display.py    # таблицы, тайлы, вывод
-```
-
-## Синтаксис
-
-```
-[команда] [хосты через ; , пробел] [флаги]
-```
-
-- `ping` — ICMP: `ping 1.1.1.1;8.8.8.8 -c 2 -f -t 800`
-- `port` — TCP: `port 10.15.20.205:1501 -W 500`
-- `help` / `clear` / `exit` / `quit`
-
-## Быстрый старт
+## Запуск
 
 ```bash
-python autoping.py ping 1.1.1.1 8.8.8.8 ya.ru -c 4 -W 800
-python autoping.py port 10.15.20.205:443 -W 500
-python autoping.py            # интерактив
+python autoping.py ping 1.1.1.1 8.8.8.8 -c 4 -W 800
+python autoping.py port 10.15.20.205:1501 -W 500
+python autoping.py -t 1.1.1.1          # непрерывно
+python autoping.py --watch 1 1.1.1.1   # обновление раз в секунду
+python autoping.py                     # интерактивный режим
 ```
+
+Слово `ping` можно опускать, хосты разделяются `;`, `,` или пробелом. В REPL: `help`, `clear`, `exit`.
 
 ## Флаги ping
 
 | Флаг | Описание |
 |------|----------|
-| `-c N` | Пакетов на хост (4) |
-| `-t` | Без остановки (continuous) |
-| `-f` | Flood: быстрая серия, live-потери |
-| `-W N` / `--timeout` | Таймаут пакета, мс (1000) |
-| `-i N` | Интервал, сек (Linux) |
-| `-s N` | Размер пакета, байт |
-| `-w N` | Дедлайн, сек (Linux) |
-| `--watch N` | Обновление экрана, сек |
-| `--file F` | Хосты из файла |
-| `--output json\|csv` / `--out F` | Экспорт |
+| `-c N` | пакетов на хост (4) |
+| `-t` | непрерывно |
+| `-f` | flood: быстрая серия, live-потери |
+| `-W N` / `--timeout` | таймаут пакета, мс (1000) |
+| `-i N`, `-w N` | интервал и дедлайн, сек (Linux) |
+| `-s N` | размер пакета, байт |
+| `--watch N` | обновление экрана, сек |
+| `--file F` | хосты из файла |
+| `--output json\|csv --out F` | экспорт результата |
 
-## Валидация
+Валидны IP (v4/v6), DNS с точкой и `localhost`; мусор помечается `✗`. Порт задаётся как `host:port`, диапазон 1–65535.
 
-- ping: IP (v4/v6), DNS с точкой, `localhost`; мусор = строка `✗`, не пингуется.
-- port: `host:port` с портом 1–65535.
+Коды выхода: `0` ok · `1` проблемы · `2` аргументы · `130` Ctrl+C.
 
-## Коды выхода
+MIT — SamSchneider25 (Griph).
 
-- `0` ok · `1` проблемы · `2` аргументы · `130` Ctrl+C
-
-## Лицензия / автор
-
-MIT — SamSchneider25 (Griph)
+## Development
+Built with AI assistance (OpenCode) for boilerplate and refactoring.
+Architecture, Windows console rendering, debugging and acceptance tests are my own work

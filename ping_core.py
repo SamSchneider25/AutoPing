@@ -19,7 +19,7 @@ from const import (
 
 
 def is_valid_host(token: str) -> bool:
-    """Проверяет, что токен похож на IP-адрес или DNS-имя."""
+    """Проверяем токен: IP-адрес или DNS-имя."""
     host, _ = extract_port(token)
     if not host:
         return False
@@ -32,7 +32,7 @@ def is_valid_host(token: str) -> bool:
         return True
     except ValueError:
         pass
-    # DNS-like имя:必须 содержать хотя бы одну точку (поддомен.domena)
+    # DNS-имя: хотя бы одна точка, например example.com
     if "." not in host:
         return False
     if re.match(
@@ -117,7 +117,7 @@ def build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=
     timeout_ms = max(1, timeout_ms)
 
     if sysname == "windows":
-        # Windows ping.exe не умеет интервал <1с; flood = быстрая серия с live-выводом
+        # ping.exe не умеет интервал меньше секунды — flood делаем серией
         cmd = ["ping", "-n", str(count), "-w", str(timeout_ms)]
         if size:
             cmd += ["-l", str(size)]
@@ -141,7 +141,7 @@ def build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=
     if timeout_ms:
         cmd += ["-W", str(max(1, round(timeout_ms / 1000)))]
     if flood and not interval:
-        # настоящий flood требует root; иначе минимальный интервал
+        # Без root настоящий flood недоступен — ставим минимальный интервал
         try:
             is_root = os.geteuid() == 0
         except AttributeError:
@@ -157,7 +157,7 @@ def build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=
 
 def stream_ping(host, count, timeout_ms, interval, size, deadline,
                 flood=False, on_packet=None) -> PingResult:
-    """Пинг с построчным чтением: on_packet(status) вызывается на каждый пакет (live)."""
+    """Читаем вывод ping построчно; on_packet вызываем на каждый пакет."""
     cmd = build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=flood)
     result = PingResult(host=host)
     enc = "cp866" if os.name == "nt" else "utf-8"
@@ -299,7 +299,7 @@ def parse_windows(text: str, host: str = "") -> PingResult:
             r.min_ms, r.max_ms = min(times), max(times)
             r.avg_ms = sum(times) / len(times)
 
-    # Per-packet: строки ответа/таймаута идут по порядку пакетов
+    # Тайлы по порядку ответов и таймаутов
     for m in re.finditer(
         r"(ответ от|reply from|превышен интервал ожидания|request timed out|"
         r"timed out|недоступен|unreachable)",
@@ -338,7 +338,7 @@ def parse_posix(text: str, host: str = "") -> PingResult:
             r.min_ms, r.max_ms = min(times), max(times)
             r.avg_ms = sum(times) / len(times)
 
-    # Per-packet: по номерам icmp_seq; отсутствующий seq = потерянный пакет
+    # По номерам icmp_seq: пропущенный seq считаем потерей
     active_seqs = {int(m.group(1)) for m in re.finditer(r"icmp_seq=(\d+)[^\n]*time=", text)}
     if r.sent:
         r.packets = [
@@ -379,7 +379,7 @@ def ping_once(host, count, timeout_ms, interval, size, deadline) -> PingResult:
 
 
 def split_hosts(raw: str) -> List[str]:
-    """Разбивает строку хостов по ; , пробелу. Возвращает список токенов."""
+    """Разбиваем хосты по `;`, `,` и пробелу."""
     if not raw:
         return []
     parts = re.split(r"[;\s,]+", raw.strip())
@@ -387,7 +387,7 @@ def split_hosts(raw: str) -> List[str]:
 
 
 def extract_port(token: str):
-    """Если в токене host:port, возвращает (host, port или None)."""
+    """Из host:port достаём хост и порт (порта нет — None)."""
     if ":" in token:
         h, _, p = token.rpartition(":")
         return h, (p if p else None)

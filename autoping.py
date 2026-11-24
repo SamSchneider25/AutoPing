@@ -212,7 +212,7 @@ def _tile(status: str) -> None:
 
 
 def live_run(hosts: List[str], args, flood: bool = False) -> List[PingResult]:
-    """Последовательный пинг с live-тайлами по мере прихода пакетов (промежуточное состояние)."""
+    """Пингуем хосты по очереди, тайлы печатаются по мере прихода пакетов."""
     import const
     count = args.count
     if flood and args.count == 4:
@@ -234,7 +234,7 @@ def live_run(hosts: List[str], args, flood: bool = False) -> List[PingResult]:
 
 
 def run_cli(argv: Optional[List[str]] = None) -> int:
-    """Основная логика ping-режима. Возвращает код выхода."""
+    """Разбираем флаги и запускаем ping-режим; возвращаем код выхода."""
     setup_encoding()
     argv = preprocess_timeout(list(argv or []))
     parser = build_parser()
@@ -270,7 +270,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         else:
             results = []
         if invalid:
-            # Невалидные токены — отдельными строками, вывод не пропускается
+            # Некорректные токены тоже показываем в таблице
             by_host = {r.host: r for r in results}
             results = [
                 by_host[h] if h in by_host else PingResult(
@@ -297,7 +297,7 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
 
 
 def preprocess_timeout(argv: List[str]) -> List[str]:
-    """-t N -> --timeout N (привычный синтаксис таймаута). -t без числа = continuous."""
+    """-t N — таймаут в мс; -t без числа — непрерывный пинг."""
     out: List[str] = []
     i = 0
     while i < len(argv):

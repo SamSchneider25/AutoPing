@@ -15,7 +15,7 @@ from const import (
     HELP_TEXT, PORT_TEXT,
 )
 
-# Фиксированные ширины столбцов, чтобы таблица не «ездила»
+# Ширина столбцов фиксированная — таблица не ездит между кадрами
 HOST_WIDTH = 30
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[[0-9;:?<=>]*[ -/]*[@-~]")
@@ -25,18 +25,14 @@ _ANSI_RE = re.compile(
     r"\x1b(?:\[[0-9;:?<=>]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[()][A-Z0-9]|\x1b[=>])"
 )
 
-# Состояние in-place рендера: высота предыдущего кадра и запомненная ширина терминала
+# Высота прошлого кадра и ширина терминала, на которой он рисовался
 _prev_h = 0
 _last_cols: Optional[int] = None
 _vt_ok = True
 
 
 def enable_vt() -> bool:
-    """Включает Virtual Terminal (ANSI) для Windows-консоли, если доступно.
-
-    Возвращает True, если ANSI-режим реально включён (иначе вызывающий
-    код должен деградировать в режим без перерисовки).
-    """
+    """Включаем ANSI в Windows-консоли; False, если режим не включился."""
     global _vt_ok
     _vt_ok = False
     if os.name != "nt":
@@ -69,11 +65,7 @@ def setup_encoding() -> None:
 
 
 def clear_screen() -> None:
-    """Полная очистка экрана: ANSI-режим (Erase Screen + Home) или системный cls/clear.
-
-    Сбрасывает высоту предыдущего кадра (_prev_h = 0) — следующий кадр
-    будет выведен как полный redraw.
-    """
+    """Чистим экран перед стартом live и при resize; счётчик кадра сбрасываем."""
     global _prev_h, _last_cols
     if _vt_ok and sys.stdout.isatty():
         sys.stdout.write("\x1b[2J\x1b[H")
@@ -85,27 +77,27 @@ def clear_screen() -> None:
 
 
 def hide_cursor() -> None:
-    """Скрывает курсор во время live-режима."""
+    """Курсор на время live-режима убираем с экрана."""
     if _vt_ok and sys.stdout.isatty():
         sys.stdout.write("\x1b[?25l")
         sys.stdout.flush()
 
 
 def show_cursor() -> None:
-    """Возвращает видимый курсор (в т.ч. после выхода из live-режима)."""
+    """Возвращаем курсор при выходе из live-режима."""
     if _vt_ok and sys.stdout.isatty():
         sys.stdout.write("\x1b[?25h")
         sys.stdout.flush()
 
 
 def reset_frame() -> None:
-    """Сбрасывает высоту предыдущего кадра (при выходе из live / resize)."""
+    """Забыть высоту прошлого кадра — следующий рисуем с чистого листа."""
     global _prev_h
     _prev_h = 0
 
 
 def _fit_line(s: str, cols: int) -> str:
-    """Обрезает ANSI-строку по видимым символам и добивает пробелами до ширины терминала."""
+    """Подгоняем строку под ширину терминала: ANSI-коды в ширину не считаем."""
     out: List[str] = []
     plain = 0
     i = 0
@@ -131,24 +123,17 @@ def _fit_line(s: str, cols: int) -> str:
 
 
 def render_frame(frame: str) -> None:
-    """Единый рендер live-кадра: in-place подмена кадра, один write на кадр.
-
-    Последовательность вывода: если высота предыдущего кадра > 0 — поднять
-    курсор вверх (стрелки CSI), затем стереть от курсора до конца экрана
-    (Erase Screen), затем записать кадр + перевод строки. Высота вычисляется
-    из реально выведенной строки: frame.count("\\n") + 1 — без констант и
-    ручных счётчиков.
-    """
+    """Один кадр — один write: поднять курсор, стереть хвост, записать кадр."""
     global _prev_h, _last_cols
     if not _vt_ok or not sys.stdout.isatty():
-        # VT недоступен или stdout не TTY — деградировать: без ANSI, без перерисовки
+        # Без VT просто дописываем кадры: ESC-коды были бы мусором
         sys.stdout.write(frame + "\n")
         sys.stdout.flush()
         return
     cols = shutil.get_terminal_size().columns
     full_clear = _last_cols is None or cols != _last_cols
     if full_clear:
-        # Старт live-режима и resize терминала: полная очистка + сброс _prev_h
+        # Старт и resize: чистый экран, высоту кадра сбрасываем
         clear_screen()
     lines = frame.split("\n")
     buf = []
@@ -163,7 +148,7 @@ def render_frame(frame: str) -> None:
 
 
 def compute_widths(results: List) -> dict:
-    # Хост фиксированной ширины, остальные — по содержимому с минимумами
+    # Хост фиксированной ширины, остальные — по содержимому, но не уже минимума
     w_host = HOST_WIDTH
     w_err = max(24, max((len(r.error_msg) for r in results if r.error_msg), default=24))
     return {
@@ -198,7 +183,7 @@ def table_lines(
     results: List, widths: dict, history: Optional[Dict[str, List[str]]] = None,
     title: str = "AutoPing — результаты проверки",
 ) -> List[str]:
-    """Собирает строки кадра (plain text) таблицы: title, шапка, разделитель, строки."""
+    """Шапка и строки таблицы обычным текстом — красить будем после подгонки ширины."""
     lines = [
         f"{BOLD}{title}{RESET}",
         "",
@@ -219,12 +204,12 @@ def table_lines(
 def print_header(widths: dict, title: str = "AutoPing — результаты проверки") -> int:
     for ln in table_lines([], widths, None, title)[:4]:
         print(ln)
-    # title+blank + шапка + разделитель
+    # Заголовок, пустая строка, шапка, разделитель
     return 4
 
 
 def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> str:
-    # Обрезаем длинный хост с многоточием, чтобы не ломать таблицу
+    # Длинный хост укорачиваем многоточием, чтобы не ломать колонки
     host = r.host
     if len(host) > widths["host"]:
         host = host[: widths["host"] - 1] + "…"
@@ -237,7 +222,7 @@ def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) 
     if history and r.host in history:
         hist = format_history(history[r.host])
     elif getattr(r, "packets", None):
-        # Одиночный прогон: тайл на каждый пакет (-c N -> N тайлов)
+        # В одиночном прогоне тайл на каждый пакет
         hist = format_history(r.packets, pad=False)
 
     return (
@@ -253,7 +238,7 @@ def print_table(results: List, widths: dict, history: Optional[Dict[str, List[st
     lines = table_lines(results, widths, history)
     for ln in lines:
         print(ln)
-    # title+blank + шапка + разделитель + строки таблицы
+    # Шапка плюс все строки таблицы
     return len(lines)
 
 
@@ -274,17 +259,17 @@ def summary_line(results: List) -> str:
 def print_summary(results: List) -> int:
     print()
     print(summary_line(results))
-    # пустая строка + итог
+    # Пустая строка и итог
     return 2
 
 
 def print_help_screen() -> None:
-    """Краткая шпора."""
+    """Памятка команд."""
     print(HELP_TEXT)
 
 
 def print_exit_summary(results: List) -> None:
-    """Краткая сводка при принудительном завершении."""
+    """Сводка при выходе из live-режима."""
     if not results:
         print("Нет данных для сводки.")
         return
