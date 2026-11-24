@@ -52,3 +52,21 @@ desktop.ini
 *.log
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+autoping.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
