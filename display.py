@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import csv
 import io
 import json
@@ -5,14 +7,27 @@ import os
 import re
 import shutil
 import sys
-from typing import Dict, List, Optional
 
 from const import (
-    BOLD, DIM, GREEN, RED, RESET, YELLOW,
-    STATUS_ACTIVE, STATUS_COLOR, STATUS_DEGRADED, STATUS_DOT,
-    STATUS_FAILED, STATUS_TEXT, STATUS_UNKNOWN,
-    TILE_ACTIVE, TILE_DEGRADED, TILE_EMPTY, TILE_FAILED, HISTORY_WIDTH,
-    HELP_TEXT, PORT_TEXT,
+    BOLD,
+    DIM,
+    GREEN,
+    HELP_TEXT,
+    HISTORY_WIDTH,
+    PORT_TEXT,
+    RED,
+    RESET,
+    STATUS_ACTIVE,
+    STATUS_COLOR,
+    STATUS_DEGRADED,
+    STATUS_DOT,
+    STATUS_FAILED,
+    STATUS_UNKNOWN,
+    TILE_ACTIVE,
+    TILE_DEGRADED,
+    TILE_EMPTY,
+    TILE_FAILED,
+    YELLOW,
 )
 
 # Ширина столбцов фиксированная — таблица не ездит между кадрами
@@ -27,7 +42,7 @@ _ANSI_RE = re.compile(
 
 # Высота прошлого кадра и ширина терминала, на которой он рисовался
 _prev_h = 0
-_last_cols: Optional[int] = None
+_last_cols: int | None = None
 _vt_ok = True
 
 
@@ -98,7 +113,7 @@ def reset_frame() -> None:
 
 def _fit_line(s: str, cols: int) -> str:
     """Подгоняем строку под ширину терминала: ANSI-коды в ширину не считаем."""
-    out: List[str] = []
+    out: list[str] = []
     plain = 0
     i = 0
     n = len(s)
@@ -124,7 +139,7 @@ def _fit_line(s: str, cols: int) -> str:
 
 def render_frame(frame: str) -> None:
     """Один кадр — один write: поднять курсор, стереть хвост, записать кадр."""
-    global _prev_h, _last_cols
+    global _prev_h
     if not _vt_ok or not sys.stdout.isatty():
         # Без VT просто дописываем кадры: ESC-коды были бы мусором
         sys.stdout.write(frame + "\n")
@@ -147,7 +162,7 @@ def render_frame(frame: str) -> None:
     _prev_h = len(lines)
 
 
-def compute_widths(results: List) -> dict:
+def compute_widths(results: list) -> dict:
     # Хост фиксированной ширины, остальные — по содержимому, но не уже минимума
     w_host = HOST_WIDTH
     w_err = max(24, max((len(r.error_msg) for r in results if r.error_msg), default=24))
@@ -162,7 +177,7 @@ def compute_widths(results: List) -> dict:
     }
 
 
-def format_history(history: List[str], pad: bool = True) -> str:
+def format_history(history: list[str], pad: bool = True) -> str:
     tiles = []
     for status in history[-HISTORY_WIDTH:]:
         if status == STATUS_ACTIVE:
@@ -180,17 +195,17 @@ def format_history(history: List[str], pad: bool = True) -> str:
 
 
 def table_lines(
-    results: List, widths: dict, history: Optional[Dict[str, List[str]]] = None,
+    results: list, widths: dict, history: dict[str, list[str]] | None = None,
     title: str = "AutoPing — результаты проверки",
-) -> List[str]:
+) -> list[str]:
     """Шапка и строки таблицы обычным текстом — красить будем после подгонки ширины."""
     lines = [
         f"{BOLD}{title}{RESET}",
         "",
-        f"┌ {'ST':<2}  {'HOST':<{widths['host']}}  "
+        (f"┌ {'ST':<2}  {'HOST':<{widths['host']}}  "
         f"{'HIST':<{widths['history']}}  {'STATUS':<{widths['status']}}  "
         f"{'PKTS':<{widths['packets']}}  {'LOSS':<{widths['loss']}}  "
-        f"{'AVG':<{widths['avg']}}  {'ERROR':<{widths['err']}}",
+        f"{'AVG':<{widths['avg']}}  {'ERROR':<{widths['err']}}"),
         f"└{'─' * (
             2 + 2 + widths["host"] + 2 + widths["history"] + 2 + widths["status"]
             + 2 + widths["packets"] + 2 + widths["loss"] + 2 + widths["avg"] + 2 + widths["err"] + 6
@@ -208,7 +223,7 @@ def print_header(widths: dict, title: str = "AutoPing — результаты �
     return 4
 
 
-def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> str:
+def format_row(r, widths: dict, history: dict[str, list[str]] | None = None) -> str:
     # Длинный хост укорачиваем многоточием, чтобы не ломать колонки
     host = r.host
     if len(host) > widths["host"]:
@@ -234,7 +249,7 @@ def format_row(r, widths: dict, history: Optional[Dict[str, List[str]]] = None) 
     )
 
 
-def print_table(results: List, widths: dict, history: Optional[Dict[str, List[str]]] = None) -> int:
+def print_table(results: list, widths: dict, history: dict[str, list[str]] | None = None) -> int:
     lines = table_lines(results, widths, history)
     for ln in lines:
         print(ln)
@@ -242,7 +257,7 @@ def print_table(results: List, widths: dict, history: Optional[Dict[str, List[st
     return len(lines)
 
 
-def summary_line(results: List) -> str:
+def summary_line(results: list) -> str:
     active = sum(1 for r in results if r.status == STATUS_ACTIVE)
     degraded = sum(1 for r in results if r.status == STATUS_DEGRADED)
     failed = sum(1 for r in results if r.status == STATUS_FAILED)
@@ -256,7 +271,7 @@ def summary_line(results: List) -> str:
     )
 
 
-def print_summary(results: List) -> int:
+def print_summary(results: list) -> int:
     print()
     print(summary_line(results))
     # Пустая строка и итог
@@ -268,7 +283,7 @@ def print_help_screen() -> None:
     print(HELP_TEXT)
 
 
-def print_exit_summary(results: List) -> None:
+def print_exit_summary(results: list) -> None:
     """Сводка при выходе из live-режима."""
     if not results:
         print("Нет данных для сводки.")
@@ -287,7 +302,7 @@ def print_exit_summary(results: List) -> None:
     print()
 
 
-def print_port_table(results: List, title: str = "AutoPing — проверка портов (TCP)") -> None:
+def print_port_table(results: list, title: str = "AutoPing — проверка портов (TCP)") -> None:
     w_hp = min(34, max(24, max((len(r.label()) for r in results), default=24)))
     w_err = max(28, max((len(r.error_msg) for r in results if r.error_msg), default=28))
     print(f"{BOLD}{title}{RESET}\n")
@@ -311,7 +326,7 @@ def print_port_table(results: List, title: str = "AutoPing — проверка 
         )
 
 
-def print_port_summary(results: List) -> None:
+def print_port_summary(results: list) -> None:
     opened = sum(1 for r in results if r.status == STATUS_ACTIVE)
     closed = len(results) - opened
     print()
@@ -321,7 +336,7 @@ def print_port_summary(results: List) -> None:
     )
 
 
-def export_results(results: List, fmt: str, path: Optional[str] = None) -> None:
+def export_results(results: list, fmt: str, path: str | None = None) -> None:
     data = [r.to_dict() for r in results]
     if fmt == "json":
         text = json.dumps(data, ensure_ascii=False, indent=2)

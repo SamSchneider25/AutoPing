@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ipaddress
 import locale
 import os
@@ -6,15 +8,14 @@ import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 from const import (
     STATUS_ACTIVE,
     STATUS_DEGRADED,
-    STATUS_FAILED,
-    STATUS_UNKNOWN,
     STATUS_DOT,
+    STATUS_FAILED,
     STATUS_TEXT,
+    STATUS_UNKNOWN,
 )
 
 
@@ -35,12 +36,7 @@ def is_valid_host(token: str) -> bool:
     # DNS-имя: хотя бы одна точка, например example.com
     if "." not in host:
         return False
-    if re.match(
-        r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+$",
-        host,
-    ):
-        return True
-    return False
+    return bool(re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)+$", host))
 
 
 @dataclass
@@ -50,13 +46,13 @@ class PingResult:
     sent: int = 0
     received: int = 0
     loss_pct: float = 0.0
-    min_ms: Optional[float] = None
-    avg_ms: Optional[float] = None
-    max_ms: Optional[float] = None
+    min_ms: float | None = None
+    avg_ms: float | None = None
+    max_ms: float | None = None
     error_code: int = 0
     error_msg: str = ""
     raw: str = ""
-    packets: List[str] = field(default_factory=list)
+    packets: list[str] = field(default_factory=list)
 
     def dot(self) -> str:
         return STATUS_DOT.get(self.status, STATUS_DOT[STATUS_UNKNOWN])
@@ -161,8 +157,8 @@ def stream_ping(host, count, timeout_ms, interval, size, deadline,
     cmd = build_ping_command(host, count, timeout_ms, interval, size, deadline, flood=flood)
     result = PingResult(host=host)
     enc = "cp866" if os.name == "nt" else "utf-8"
-    packets: List[str] = []
-    chunks: List[bytes] = []
+    packets: list[str] = []
+    chunks: list[bytes] = []
     proc = None
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -170,12 +166,12 @@ def stream_ping(host, count, timeout_ms, interval, size, deadline,
             chunks.append(raw)
             line = raw.decode(enc, errors="replace")
             status = None
-            if re.search(r"(ответ от|reply from|bytes from)", line, re.I) and \
-               re.search(r"(время|time=)", line, re.I):
+            if re.search(r"(ответ от|reply from|bytes from)", line, re.IGNORECASE) and \
+               re.search(r"(время|time=)", line, re.IGNORECASE):
                 status = STATUS_ACTIVE
             elif re.search(
                 r"(превышен интервал ожидания|request timed out|timed out|"
-                r"недоступен|unreachable|no answer yet)", line, re.I
+                r"недоступен|unreachable|no answer yet)", line, re.IGNORECASE
             ):
                 status = STATUS_FAILED
             if status:
@@ -257,18 +253,17 @@ def _classify(result: PingResult, text: str) -> PingResult:
 
 
 def parse_windows(text: str, host: str = "") -> PingResult:
-    from const import STATUS_DOT
     r = PingResult(host=host)
     t = text.replace(",", ".").replace("мc", "мс")
 
     m = re.search(
         r"отправлено\s*=\s*(\d+).*получено\s*=\s*(\d+).*потеряно\s*=\s*(\d+)",
-        t, re.I | re.S,
+        t, re.IGNORECASE | re.DOTALL,
     )
     if not m:
         m = re.search(
             r"sent\s*=\s*(\d+).*received\s*=\s*(\d+).*lost\s*=\s*(\d+)",
-            t, re.I | re.S,
+            t, re.IGNORECASE | re.DOTALL,
         )
     if m:
         r.sent = int(m.group(1))
@@ -279,22 +274,22 @@ def parse_windows(text: str, host: str = "") -> PingResult:
     m = re.search(
         r"минимальн\w*\s*=\s*([\d.,]+)\s*мс.*максимальн\w*\s*=\s*([\d.,]+)\s*мс.*"
         r"среднее\w*\s*=\s*([\d.,]+)\s*мс",
-        t, re.I | re.S,
+        t, re.IGNORECASE | re.DOTALL,
     )
     if not m:
         m = re.search(
             r"minimum\s*=\s*([\d.,]+)m?s.*maximum\s*=\s*([\d.,]+)m?s.*"
             r"average\s*=\s*([\d.,]+)m?s",
-            t, re.I | re.S,
+            t, re.IGNORECASE | re.DOTALL,
         )
     if m:
         r.min_ms = float(m.group(1).replace(",", "."))
         r.max_ms = float(m.group(2).replace(",", "."))
         r.avg_ms = float(m.group(3).replace(",", "."))
     else:
-        times = [float(x) for x in re.findall(r"время\s*=\s*([\d.,]+)\s*мс", t, re.I)]
+        times = [float(x) for x in re.findall(r"время\s*=\s*([\d.,]+)\s*мс", t, re.IGNORECASE)]
         if not times:
-            times = [float(x) for x in re.findall(r"time\s*=\s*([\d.,]+)m?s", t, re.I)]
+            times = [float(x) for x in re.findall(r"time\s*=\s*([\d.,]+)m?s", t, re.IGNORECASE)]
         if times:
             r.min_ms, r.max_ms = min(times), max(times)
             r.avg_ms = sum(times) / len(times)
@@ -304,7 +299,7 @@ def parse_windows(text: str, host: str = "") -> PingResult:
         r"(ответ от|reply from|превышен интервал ожидания|request timed out|"
         r"timed out|недоступен|unreachable)",
         t,
-        re.I,
+        re.IGNORECASE,
     ):
         kind = m.group(1).lower()
         r.packets.append(STATUS_ACTIVE if kind in ("ответ от", "reply from") else STATUS_FAILED)
@@ -378,7 +373,7 @@ def ping_once(host, count, timeout_ms, interval, size, deadline) -> PingResult:
     return result
 
 
-def split_hosts(raw: str) -> List[str]:
+def split_hosts(raw: str) -> list[str]:
     """Разбиваем хосты по `;`, `,` и пробелу."""
     if not raw:
         return []
@@ -394,8 +389,8 @@ def extract_port(token: str):
     return token, None
 
 
-def read_hosts_from_file(path: str) -> List[str]:
-    hosts: List[str] = []
+def read_hosts_from_file(path: str) -> list[str]:
+    hosts: list[str] = []
     with open(path, "r", encoding="utf-8-sig") as f:
         for line in f:
             line = line.strip()
@@ -408,8 +403,8 @@ def read_hosts_from_file(path: str) -> List[str]:
     return hosts
 
 
-def run_once(hosts, count, timeout_ms, interval, size, deadline) -> List[PingResult]:
-    results: List[PingResult] = []
+def run_once(hosts, count, timeout_ms, interval, size, deadline) -> list[PingResult]:
+    results: list[PingResult] = []
     workers = min(len(hosts), 64)
     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {

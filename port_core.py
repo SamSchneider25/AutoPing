@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import socket
 import time
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 from const import STATUS_ACTIVE, STATUS_FAILED
 from ping_core import is_valid_host
@@ -12,14 +13,14 @@ class PortResult:
     host: str
     port: int
     status: str = STATUS_FAILED
-    time_ms: Optional[float] = None
+    time_ms: float | None = None
     error_msg: str = ""
 
     def label(self) -> str:
         return f"{self.host}:{self.port}" if self.port else self.host
 
 
-def parse_port_token(token: str) -> Tuple[Optional[str], Optional[int]]:
+def parse_port_token(token: str) -> tuple[str | None, int | None]:
     """host:port -> (хост, порт); невалидный токен -> (None, None)."""
     if ":" not in token:
         return None, None
@@ -39,7 +40,7 @@ def check_port(host: str, port: int, timeout_ms: int) -> PortResult:
         with socket.create_connection((host, port), timeout=max(0.1, timeout_ms / 1000)):
             r.time_ms = round((time.monotonic() - start) * 1000, 1)
             r.status = STATUS_ACTIVE
-    except (socket.timeout, TimeoutError):
+    except TimeoutError:
         r.error_msg = "Таймаут соединения"
     except ConnectionRefusedError:
         r.error_msg = "Порт закрыт (refused)"
@@ -50,8 +51,8 @@ def check_port(host: str, port: int, timeout_ms: int) -> PortResult:
     return r
 
 
-def run_ports(tokens: List[str], timeout_ms: int) -> List[PortResult]:
-    results: List[PortResult] = []
+def run_ports(tokens: list[str], timeout_ms: int) -> list[PortResult]:
+    results: list[PortResult] = []
     for token in tokens:
         host, port = parse_port_token(token)
         if host is None or port is None:

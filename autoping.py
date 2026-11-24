@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 AutoPing (PingCtl) — точка входа.
 
@@ -8,24 +7,41 @@ AutoPing (PingCtl) — точка входа.
   port 10.15.20.205:1501 --timeout 500
   help / clear / exit / quit
 """
+
 import argparse
 import shlex
 import signal
 import sys
 import time
-from typing import List, Optional, Tuple
 
-from const import __version__, RED, GREEN, YELLOW, CYAN, BOLD, DIM, RESET, STATUS_FAILED
+from const import BOLD, RED, RESET, STATUS_FAILED, YELLOW, __version__
 from display import (
-    setup_encoding, clear_screen, compute_widths, print_table,
-    print_summary, export_results, print_help_screen, print_exit_summary,
-    print_port_table, print_port_summary, render_frame, hide_cursor, show_cursor,
-    reset_frame, table_lines, summary_line,
+    clear_screen,
+    compute_widths,
+    export_results,
+    hide_cursor,
+    print_exit_summary,
+    print_help_screen,
+    print_port_summary,
+    print_port_table,
+    print_summary,
+    print_table,
+    render_frame,
+    reset_frame,
+    setup_encoding,
+    show_cursor,
+    summary_line,
+    table_lines,
 )
 from ping_core import (
-    read_hosts_from_file, split_hosts, run_once, is_valid_host, PingResult, stream_ping,
+    PingResult,
+    is_valid_host,
+    read_hosts_from_file,
+    run_once,
+    split_hosts,
+    stream_ping,
 )
-from port_core import parse_port_token, run_ports
+from port_core import run_ports
 
 FLAG_WITH_VALUE = {
     "--file", "-c", "--count", "--timeout", "-W", "-i", "--interval",
@@ -163,8 +179,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def collect_hosts(args) -> List[str]:
-    hosts: List[str] = []
+def collect_hosts(args) -> list[str]:
+    hosts: list[str] = []
     for h in args.hosts:
         hosts.extend(split_hosts(h))
     if args.file:
@@ -178,7 +194,7 @@ def collect_hosts(args) -> List[str]:
             sys.exit(2)
 
     seen = set()
-    unique: List[str] = []
+    unique: list[str] = []
     for h in hosts:
         if h not in seen:
             seen.add(h)
@@ -211,13 +227,13 @@ def _tile(status: str) -> None:
     print(mapping.get(status, const.TILE_EMPTY), end="", flush=True)
 
 
-def live_run(hosts: List[str], args, flood: bool = False) -> List[PingResult]:
+def live_run(hosts: list[str], args, flood: bool = False) -> list[PingResult]:
     """Пингуем хосты по очереди, тайлы печатаются по мере прихода пакетов."""
     import const
     count = args.count
     if flood and args.count == 4:
         count = 100  # flood по умолчанию — 100 пакетов
-    results: List[PingResult] = []
+    results: list[PingResult] = []
     for h in hosts:
         print(f"{const.BOLD}{h}{const.RESET}  ", end="", flush=True)
         try:
@@ -233,7 +249,7 @@ def live_run(hosts: List[str], args, flood: bool = False) -> List[PingResult]:
     return results
 
 
-def run_cli(argv: Optional[List[str]] = None) -> int:
+def run_cli(argv: list[str] | None = None) -> int:
     """Разбираем флаги и запускаем ping-режим; возвращаем код выхода."""
     setup_encoding()
     argv = preprocess_timeout(list(argv or []))
@@ -296,9 +312,9 @@ def run_cli(argv: Optional[List[str]] = None) -> int:
         return 130
 
 
-def preprocess_timeout(argv: List[str]) -> List[str]:
+def preprocess_timeout(argv: list[str]) -> list[str]:
     """-t N — таймаут в мс; -t без числа — непрерывный пинг."""
-    out: List[str] = []
+    out: list[str] = []
     i = 0
     while i < len(argv):
         if argv[i] == "-t" and i + 1 < len(argv) and argv[i + 1].isdigit():
@@ -311,9 +327,9 @@ def preprocess_timeout(argv: List[str]) -> List[str]:
     return out
 
 
-def split_hosts_flags(argv: List[str]) -> Tuple[List[str], List[str]]:
-    host_args: List[str] = []
-    flag_args: List[str] = []
+def split_hosts_flags(argv: list[str]) -> tuple[list[str], list[str]]:
+    host_args: list[str] = []
+    flag_args: list[str] = []
     i = 0
     while i < len(argv):
         tok = argv[i]
@@ -330,7 +346,7 @@ def split_hosts_flags(argv: List[str]) -> Tuple[List[str], List[str]]:
     return host_args, flag_args
 
 
-def do_ping(rest: List[str]) -> int:
+def do_ping(rest: list[str]) -> int:
     host_args, flag_args = split_hosts_flags(rest)
     if not host_args and not any(a in ("-f", "--file") for a in flag_args):
         print(f"{RED}Ошибка:{RESET} укажите хосты, например: ping 1.1.1.1;ya.ru -c 2")
@@ -344,9 +360,9 @@ def do_ping(rest: List[str]) -> int:
         return code
 
 
-def do_port(rest: List[str]) -> int:
+def do_port(rest: list[str]) -> int:
     timeout = 1000
-    tokens: List[str] = []
+    tokens: list[str] = []
     i = 0
     while i < len(rest):
         a = rest[i]
@@ -420,7 +436,7 @@ def interactive_mode() -> int:
             print("Доступно: ping, port, help, clear, exit, quit")
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_encoding()
     if argv is None:
         argv = sys.argv[1:]
